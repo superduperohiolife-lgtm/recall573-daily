@@ -1,0 +1,62 @@
+name: Daily build & deploy
+
+on:
+  schedule:
+    - cron: "0 21 * * *"   # 毎日 21:00 UTC = 06:00 JST
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pdftotext
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+
+      - name: Fetch dictionary sources (EJDict / CEFR-J)
+        run: |
+          mkdir -p .ext
+          git clone -q --depth 1 https://github.com/kujirahand/EJDict.git .ext/EJDict
+          git clone -q --depth 1 https://github.com/openlanguageprofiles/olp-en-cefrj.git .ext/olp-en-cefrj
+
+      - name: Restore parsed-PDF cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: pdf-${{ github.run_id }}
+          restore-keys: pdf-
+
+      - name: Build data
+        run: python3 scripts/build.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

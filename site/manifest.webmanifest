@@ -1,0 +1,14 @@
+{
+  "name": "573 Recall Reports",
+  "short_name": "573 Recalls",
+  "description": "Daily list of NHTSA Part 573 safety recall reports from major automakers",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#14213d",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,268 @@
+/* 573 Recall Reports — 一覧・明細・単語タップ和訳 */
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const view = $("#view");
+  let DATA = null;
+  let DICT = {};
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtDate = (iso) => {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  };
+
+  // 英検2級（CEFR B1）以上の語だけをタップ可能にする
+  const WORD = /([A-Za-z][A-Za-z'’-]*[A-Za-z]|[A-Za-z])/g;
+  function tap(text) {
+    const s = String(text ?? "");
+    let out = "", last = 0, m;
+    WORD.lastIndex = 0;
+    while ((m = WORD.exec(s))) {
+      out += esc(s.slice(last, m.index));
+      const w = m[0];
+      const k = w.toLowerCase().replace(/’/g, "'");
+      const isAbbr = w.length > 1 && w === w.toUpperCase();
+      if (!isAbbr && DICT[k]) out += `<span class="w" data-k="${esc(k)}">${esc(w)}</span>`;
+      else out += esc(w);
+      last = m.index + w.length;
+    }
+    return out + esc(s.slice(last));
+  }
+
+  // ------------------------------------------------------------ data
+  async function load() {
+    const opt = { cache: "no-cache" };
+    const [a, b] = await Promise.all([fetch("data/items.json", opt), fetch("data/dict.json", opt)]);
+    DATA = await a.json();
+    DICT = await b.json();
+    const g = DATA.meta.generated_at;
+    $("#sub").dataset.base = DATA.meta.window_from
+      ? `Major OEMs · Part 573 submissions ${DATA.meta.window_from} – ${DATA.meta.window_to} · Updated ${g.slice(0, 16).replace("T", " ")} JST`
+      : `Updated ${g.slice(0, 16).replace("T", " ")} JST`;
+  }
+
+  // ------------------------------------------------------------ list
+  function renderList() {
+    document.title = "573 Recall Reports";
+    $("#title").textContent = "573 Recall Reports";
+    $("#sub").textContent = $("#sub").dataset.base || "";
+    $("#back").hidden = true;
+    const items = DATA.items;
+    if (DATA.meta.error) {
+      view.innerHTML = `<p class="empty">${esc(DATA.meta.error)}</p>`;
+      return;
+    }
+    if (!items.length) {
+      view.innerHTML = `<p class="empty">No Part 573 reports from the selected manufacturers in the last 14 days.</p>`;
+      return;
+    }
+    let html = "", cur = null;
+    const byDay = {};
+    items.forEach((it) => (byDay[it.date] = (byDay[it.date] || 0) + 1));
+    for (const it of items) {
+      if (it.date !== cur) {
+        cur = it.date;
+        html += `<div class="day"><span>${esc(fmtDate(cur))}</span><span>${byDay[cur]}</span></div>`;
+      }
+      html += `<a class="card" href="#/r/${encodeURIComponent(it.id)}">
+        <div class="row"><span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}
+        ${it.amendment ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
+        <div class="subj">${esc(it.subject)}</div>
+        <div class="row">${esc(it.nhtsa_id)} · ${esc(it.total || "—")} units · ${esc(modelsShort(it))}</div>
+      </a>`;
+    }
+    html += `<p class="note">Listed by the submission date printed on each Part 573 report. NHTSA usually publishes a report several days after receipt, so the most recent days fill in over time.</p>`;
+    html += footer();
+    view.innerHTML = html;
+    window.scrollTo(0, +sessionStorage.getItem("listY") || 0);
+  }
+
+  function modelsShort(it) {
+    const names = (it.vehicles || []).map((v) => v.name.replace(/^(\d{4})-(\d{4})/, (m, a, b) => (a === b ? a : `${a}-${b.slice(2)}`)));
+    if (!names.length) return "";
+    return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ");
+  }
+
+  // ------------------------------------------------------------ detail
+  function paraHTML(p, tl) {
+    if (p.startsWith("§")) return `<div class="d">${tap(p.slice(1))}</div>`;
+    return `<p>${tap(p)}</p>`;
+  }
+
+  function diffHTML(rows, tl) {
+    return rows
+      .map((r) => {
+        if (r.t === "eq") return paraHTML(r.x, tl);
+        if (r.t === "ins" || r.t === "del") {
+          const x = r.x.startsWith("§") ? r.x.slice(1) : r.x;
+          const tag = r.x.startsWith("§") ? "div" : "p";
+          return `<${tag} class="${r.t}${r.x.startsWith("§") ? " d" : ""}">${tap(x)}</${tag}>`;
+        }
+        const inner = r.ops
+          .map(([op, t]) => (op === "=" ? tap(t) : `<span class="${op === "+" ? "ins" : "del"}">${tap(t)}</span>`))
+          .join("");
+        return `<p>${inner}</p>`;
+      })
+      .join("");
+  }
+
+  function block(key, paras, ch, tl) {
+    if (ch && ch.sections && ch.sections[key]) return diffHTML(ch.sections[key], tl);
+    return (paras || []).map((p) => paraHTML(p, tl)).join("");
+  }
+
+  function field(label, key, it, ch, fmt = (v) => esc(v)) {
+    const v = it[key];
+    const old = ch && ch.fields && ch.fields[key];
+    if (!v && !old) return "";
+    const oldHTML = old ? `<span class="old">${esc(old[0] || "—")}</span><span class="ins">${fmt(old[1] || "—")}</span>` : fmt(v);
+    return `<div class="lbl">${esc(label)}</div><div>${oldHTML}</div>`;
+  }
+
+  function section(n, title, inner, changed, isAmend) {
+    if (!inner) inner = `<p class="note" style="margin:0">Not stated in this report.</p>`;
+    const flag = isAmend ? (changed ? `<span class="chg">Changed</span>` : `<span class="nochg">No change</span>`) : "";
+    const open = !isAmend || changed ? " open" : "";
+    return `<details class="sec"${open}><summary><span class="num">${n}</span>${esc(title)}${flag}</summary><div class="body">${inner}</div></details>`;
+  }
+
+  function renderDetail(id) {
+    const it = DATA.items.find((x) => x.id === id);
+    if (!it) {
+      view.innerHTML = `<p class="empty">This report is no longer in the 14-day window.</p>`;
+      return;
+    }
+    document.title = `${it.nhtsa_id} ${it.subject}`;
+    $("#title").textContent = `${it.maker} · ${it.nhtsa_id}`;
+    $("#sub").textContent = fmtDate(it.date);
+    $("#back").hidden = false;
+    const am = it.amendment > 0;
+    const ch = am ? it.changes : null;
+    const S = (ch && ch.sections) || {};
+    const F = (ch && ch.fields) || {};
+
+    let amendBox = "";
+    if (am) {
+      amendBox = ch
+        ? `<div class="amend"><b>${esc(it.doc_label)}</b><br>Changes compared with <b>${esc(it.compared_with)}</b>.
+            <div class="legend"><span class="ins">&nbsp;added&nbsp;</span><span class="del">&nbsp;deleted&nbsp;</span><span>Unchanged sections are collapsed.</span></div></div>`
+        : `<div class="amend"><b>${esc(it.doc_label)}</b><br>The previous version has not been published by NHTSA, so no comparison is available.</div>`;
+    }
+
+    // 1 Defect
+    const s1 =
+      `<div class="lbl">Defect name</div><p>${tap(it.subject)}</p>` +
+      (it.defect?.length || S.defect ? `<div class="lbl">Description</div>${block("defect", it.defect, ch)}` : "") +
+      (it.risk?.length || S.risk ? `<div class="lbl">Safety risk</div>${block("risk", it.risk, ch)}` : "") +
+      (it.cause?.length || S.cause ? `<div class="lbl">Cause</div>${block("cause", it.cause, ch)}` : "");
+    // 2 MY / Model
+    let s2 = "";
+    if (S.vehicles) {
+      s2 = diffHTML(S.vehicles.map((r) => (r.t === "mod" ? r : r)), false);
+    } else if (it.vehicles?.length) {
+      s2 = `<table class="veh"><tr><th>MY / Model</th><th style="text-align:right">Units</th></tr>` +
+        it.vehicles.map((v) => `<tr><td>${esc(v.name)}${v.category && /motorcycle/i.test(v.category) ? ' <span class="tag moto">Motorcycle</span>' : ""}${v.prod ? `<div class="parts">Built ${esc(v.prod)}</div>` : ""}</td><td class="n">${esc(v.count || "—")}</td></tr>`).join("") +
+        `</table>`;
+    }
+    // 3 Components
+    let s3 = "";
+    if (S.components) s3 = diffHTML(S.components, false);
+    else if (it.components?.length)
+      s3 = it.components.map((c) => `<p>${tap(c.name.toLowerCase() === c.name ? c.name : c.name)}${c.parts?.length ? `<br><span class="parts">P/N: ${esc(c.parts.slice(0, 12).join(", "))}${c.parts.length > 12 ? ` … (+${c.parts.length - 12})` : ""}</span>` : ""}</p>`).join("");
+    s3 += field("Supplier", "supplier", it, ch);
+    // 4 Units
+    const s4 = `<div class="big">${F.total ? `<span class="old" style="font-size:18px">${esc(F.total[0] || "—")}</span><span class="ins">${esc(F.total[1] || "—")}</span>` : esc(it.total || "—")}</div>` +
+      field("Estimated percentage with defect", "pct", it, ch);
+    // 5 Field incidents
+    const s5 = S.market ? diffHTML(S.market) : (it.market || []).map((p) => `<p>${tap(p)}</p>`).join("");
+    // 6 Chronology
+    const s6 = `<div class="tl">${block("chronology", it.chronology, ch, true)}</div>`;
+    // 7 Remedy
+    const s7 = field("Remedy type", "remedy_type", it, ch) +
+      (it.remedy?.length || S.remedy ? `<div class="lbl">Remedy program</div>${block("remedy", it.remedy, ch)}` : "") +
+      (it.remedy_diff?.length || S.remedy_diff ? `<div class="lbl">How the remedy part differs</div>${block("remedy_diff", it.remedy_diff, ch)}` : "") +
+      (it.production_fix?.length || S.production_fix ? `<div class="lbl">Production correction</div>${block("production_fix", it.production_fix, ch)}` : "");
+
+    const c = (k) => !!(S[k] || F[k]);
+    view.innerHTML = `
+      <div class="hero">
+        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}${am ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
+        <h2>${tap(it.subject)}</h2>
+        <div class="meta">
+          <span>NHTSA ID</span><b>${esc(it.nhtsa_id)}</b>
+          <span>Submitted</span><b>${esc(fmtDate(it.date))}</b>
+          <span>Manufacturer</span><b>${esc(it.manufacturer)}</b>
+          ${it.mfr_campaign ? `<span>Mfr recall no.</span><b>${esc(it.mfr_campaign)}</b>` : ""}
+        </div>
+        <a class="pdf" href="${esc(it.doc_url)}" target="_blank" rel="noopener">Open Part 573 report (PDF) ↗</a>
+        ${amendBox}
+      </div>
+      ${section(1, "Defect", s1, c("defect") || c("risk") || c("cause"), am)}
+      ${section(2, "Model year / Model", s2, c("vehicles"), am)}
+      ${section(3, "Components", s3, c("components") || c("supplier"), am)}
+      ${section(4, "Units affected", s4, c("total") || c("pct"), am)}
+      ${section(5, "Field incidents", s5, c("market"), am)}
+      ${section(6, "Chronology", s6, c("chronology"), am)}
+      ${section(7, "Remedy", s7, c("remedy") || c("remedy_diff") || c("production_fix") || c("remedy_type"), am)}
+      <p class="note">Tap an underlined word (Eiken Grade 2 / CEFR B1 and above) for its Japanese meaning.</p>
+      ${footer()}`;
+    window.scrollTo(0, 0);
+  }
+
+  function footer() {
+    return `<footer class="src">Source: NHTSA Part 573 Safety Recall Reports (api.nhtsa.gov). Japanese meanings: EJDict (public domain).
+      Word levels: The CEFR-J Wordlist Version 1.5, compiled by Yukio Tono, Tokyo University of Foreign Studies; Octanove Vocabulary Profile C1/C2 (CC BY-SA 4.0).</footer>`;
+  }
+
+  // ------------------------------------------------------------ word sheet
+  const sheet = $("#sheet");
+  let onEl = null;
+  function closeSheet() {
+    sheet.hidden = true;
+    if (onEl) onEl.classList.remove("on");
+    onEl = null;
+  }
+  document.addEventListener("click", (e) => {
+    const w = e.target.closest(".w");
+    if (w) {
+      e.preventDefault();
+      const d = DICT[w.dataset.k];
+      if (!d) return;
+      if (onEl) onEl.classList.remove("on");
+      onEl = w;
+      w.classList.add("on");
+      $("#sh-word").textContent = w.textContent;
+      $("#sh-lv").textContent = d.g ? "Auto term" : d.l || "";
+      $("#sh-head").textContent = d.h !== w.dataset.k ? `→ ${d.h}` : "";
+      $("#sh-mean").textContent = d.m;
+      sheet.hidden = false;
+      return;
+    }
+    if (!e.target.closest("#sheet") || e.target.closest("#sh-x")) closeSheet();
+  });
+
+  // ------------------------------------------------------------ routing
+  function route() {
+    closeSheet();
+    const m = location.hash.match(/^#\/r\/(.+)$/);
+    if (m) renderDetail(decodeURIComponent(m[1]));
+    else renderList();
+  }
+  window.addEventListener("hashchange", route);
+  window.addEventListener("scroll", () => {
+    if (!location.hash.startsWith("#/r/")) sessionStorage.setItem("listY", String(window.scrollY));
+  }, { passive: true });
+  $("#back").addEventListener("click", () => {
+    if (history.length > 1) history.back();
+    else location.hash = "";
+  });
+
+  load()
+    .then(route)
+    .catch((e) => {
+      view.innerHTML = `<p class="empty">Could not load data. Check your connection and reload.<br><small>${esc(e.message)}</small></p>`;
+    });
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
