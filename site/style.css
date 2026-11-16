@@ -19,7 +19,24 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); -webkit-text-size-adjust: 100%; }
 body { padding-bottom: env(safe-area-inset-bottom); }
-.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; background: var(--navy); color: #fff; }
+.top { position: sticky; top: 0; z-index: 5; padding: calc(10px + env(safe-area-inset-top)) 14px 10px; background: var(--navy); color: #fff; }
+.bar { display: flex; align-items: center; gap: 8px; }
+.tabs { display: flex; gap: 4px; margin-top: 10px; padding: 3px; border-radius: 10px; background: rgba(255,255,255,.12); }
+.tabs[hidden] { display: none; }
+.tabs a { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; border-radius: 8px; color: #fff; text-decoration: none; font-weight: 700; font-size: 15px; opacity: .78; -webkit-tap-highlight-color: transparent; }
+.tabs a.on { background: #fff; color: var(--navy); opacity: 1; }
+.tabs .cnt { font-size: 12px; font-weight: 700; padding: 0 7px; border-radius: 999px; background: rgba(255,255,255,.2); line-height: 18px; }
+.tabs .cnt:empty { display: none; }
+.tabs a.on .cnt { background: #e8ecf4; }
+.ev { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
+.ev.Opened { background: #e3f0ff; color: #0b4fb3; border: 1px solid #b7d3fb; }
+.ev.Closed { background: #eef0f3; color: #4b5260; border: 1px solid #d5d9e0; }
+.tag.typ { background: var(--navy); color: #fff; }
+.docs { margin: 0; padding: 0; list-style: none; }
+.docs li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
+.docs li:last-child { border-bottom: 0; }
+.docs a { color: var(--tap); }
+.docs .dt { display: block; font-size: 12px; color: var(--muted); }
 .top h1 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.25; }
 .ttl { min-width: 0; }
 .sub { margin: 2px 0 0; font-size: 12px; opacity: .8; }

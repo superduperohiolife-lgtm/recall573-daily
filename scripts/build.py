@@ -6,10 +6,14 @@
 2. 車両リコール (xxV) かつ対象メーカーに絞り込む
 3. 573 レポート PDF（原本・改訂版）を取得し、本文から明細項目を抽出
 4. 改訂版は直前の版と段落／単語単位で差分を取る
-5. 提出日 (Submission Date) が過去 14 日以内の版を一覧化し JSON 出力
-6. 明細本文に出る単語のうち、英検2級（CEFR B1）以上の語だけ辞書サブセットを作成
+5. 提出日 (Submission Date) が過去 30 日以内の版を一覧化し JSON 出力
+6. ODI 調査（PE / EA）のうち、過去 30 日以内に開始または終了したものを JSON 出力
+7. 明細本文に出る単語のうち、英検2級（CEFR B1）以上の語だけ辞書サブセットを作成
 """
+import collections
 import difflib
+import html
+import io
 import json
 import os
 import re
@@ -17,14 +21,20 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "site", "data")
-WINDOW_DAYS = int(os.environ.get("WINDOW_DAYS", "14"))
-FETCH_MARGIN_DAYS = int(os.environ.get("FETCH_MARGIN_DAYS", "21"))  # byDate は更新日基準のため、余裕を持って取得
+WINDOW_DAYS = int(os.environ.get("WINDOW_DAYS", "30"))
+FETCH_MARGIN_DAYS = int(os.environ.get("FETCH_MARGIN_DAYS", str(WINDOW_DAYS + 7)))  # byDate は更新日基準のため、余裕を持って取得
 API = "https://api.nhtsa.gov/safetyIssues/byDate?filter=recalls&dateStart={s}&dateEnd={e}&max=50&offset={o}"
+# ODI 調査: 一覧は日次更新のフラットファイル、明細は byNhtsaId（byDate は調査を返さないため）
+INV_FLAT = "https://static.nhtsa.gov/odi/ffdd/inv/FLAT_INV.zip"
+INV_API = "https://api.nhtsa.gov/safetyIssues/byNhtsaId?nhtsaId={}"
+INV_TYPES = ("PE", "EA")
 UA = {"User-Agent": "recall573-daily (GitHub Actions; public NHTSA data)"}
 JST = timezone(timedelta(hours=9))
 PARSER_VERSION = "1"  # 解析ロジックを変えたら上げる（キャッシュ無効化）
@@ -410,6 +420,147 @@ def build_dict(texts, ej, level, gl):
     return out
 
 
+# ---------------------------------------------------------------- ODI 調査（PE / EA）
+def _ymd(s):
+    """YYYYMMDD または ISO 文字列 → date（空なら None）。"""
+    s = (s or "").strip()
+    if re.fullmatch(r"\d{8}", s):
+        return datetime.strptime(s, "%Y%m%d").date()
+    if re.match(r"\d{4}-\d{2}-\d{2}", s):
+        return datetime.fromisoformat(s[:10]).date()
+    return None
+
+
+def flat_investigations(cutoff):
+    """フラットファイルから、期間内に開始・終了した PE/EA の番号と付随情報を返す。"""
+    z = zipfile.ZipFile(io.BytesIO(http_get(INV_FLAT, binary=True)))
+    name = next(n for n in z.namelist() if n.upper().endswith(".TXT"))
+    hits, last_no = {}, collections.defaultdict(int)
+    with z.open(name) as f:
+        for raw in io.TextIOWrapper(f, encoding="cp1252", errors="replace"):
+            p = raw.rstrip("\r\n").split("\t")
+            if len(p) < 9 or p[0][:2] not in INV_TYPES:
+                continue
+            m = re.fullmatch(r"(PE|EA)(\d{2})(\d{3})", p[0])
+            if m:
+                last_no[(m[1], m[2])] = max(last_no[(m[1], m[2])], int(m[3]))
+            od, cd = _ymd(p[6]), _ymd(p[7])
+            if not ((od and od >= cutoff) or (cd and cd >= cutoff)):
+                continue
+            h = hits.setdefault(p[0], {"odate": od, "cdate": cd, "mfr": collections.Counter(), "camp": set()})
+            h["mfr"][p[5].strip()] += 1
+            if p[8].strip():
+                h["camp"].add(p[8].strip())
+    return hits, last_no
+
+
+def html_paras(s):
+    paras = []
+    for chunk in re.split(r"(?i)</p>|<br\s*/?>|</div>|</li>", s or ""):
+        t = html.unescape(re.sub(r"<[^>]+>", " ", chunk)).replace("\xa0", " ")
+        t = re.sub(r"\s+", " ", t).strip()
+        if t:
+            paras.append(t)
+    return paras
+
+
+def clean_mfr(name):
+    n = re.sub(r",?\s*(Inc\.?|LLC|L\.L\.C\.|Corp\.?|Corporation|Co\.)$", "", (name or "").strip(), flags=re.I)
+    return re.sub(r",\s*$", "", n).strip() or name
+
+
+def products_view(products, primary):
+    """製品一覧を「メーカー表記 → 車名 → 年式」にまとめる。主要メーカー以外は別枠。"""
+    main, other = collections.OrderedDict(), collections.OrderedDict()
+    for p in products or []:
+        key = f"{(p.get('productMake') or '').strip()} {(p.get('productModel') or '').strip()}".strip()
+        if not key:
+            continue
+        bucket = main if (p.get("manufacturer") or "") == primary else other
+        bucket.setdefault(key, set())
+        y = (p.get("productYear") or "").strip()
+        if y.isdigit() and y != "9999":  # 9999 = 年式なし（装備品・ADS 等）
+            bucket[key].add(int(y))
+
+    def fmt(b):
+        out = []
+        for k, ys in b.items():
+            ys = sorted(ys)
+            rng = "" if not ys else (str(ys[0]) if len(ys) == 1 else f"{ys[0]}-{ys[-1]}")
+            if ys and len(ys) != ys[-1] - ys[0] + 1:
+                rng = ", ".join(map(str, ys))  # 年式に欠けがあれば列挙
+            out.append({"name": k, "years": rng})
+        return sorted(out, key=lambda x: x["name"])
+
+    return fmt(main), fmt(other)
+
+
+def build_investigations(cutoff, today):
+    hits, last_no = flat_investigations(cutoff)
+    log(f"investigations in flat file window: {sorted(hits)}")
+    # フラットファイル更新前の新規開始分を拾うため、各種別の最新番号の次を数件だけ照会
+    yy = f"{today.year % 100:02d}"
+    probe = []
+    for t in INV_TYPES:
+        n = last_no.get((t, yy), 0)
+        probe += [f"{t}{yy}{n + i:03d}" for i in range(1, 4)]
+
+    items = []
+    for no in sorted(hits) + probe:
+        time.sleep(0.3)
+        try:
+            d = json.loads(http_get(INV_API.format(no)))
+        except Exception as e:  # noqa: BLE001
+            log(f"  ! investigation fetch failed {no}: {e}")
+            continue
+        invs = [x for res in d.get("results", []) for x in res.get("investigations", [])]
+        if not invs:
+            continue
+        v = invs[0]
+        h = hits.get(no, {"odate": None, "cdate": None, "mfr": collections.Counter(), "camp": set()})
+        od = h["odate"] or _ymd(v.get("dateOpened"))
+        cd = h["cdate"] or _ymd(v.get("dateClosed"))
+        events = []
+        if od and od >= cutoff:
+            events.append({"kind": "Opened", "date": od.isoformat()})
+        if cd and cd >= cutoff:
+            events.append({"kind": "Closed", "date": cd.isoformat()})
+        if not events:
+            continue
+        prods = v.get("associatedProducts") or []
+        primary = h["mfr"].most_common(1)[0][0] if h["mfr"] else None
+        if not primary:
+            c = collections.Counter(p.get("manufacturer") for p in prods if p.get("manufacturer"))
+            primary = c.most_common(1)[0][0] if c else ""
+        main_p, other_p = products_view(prods, primary)
+        docs = sorted(v.get("associatedDocuments") or [], key=lambda x: x.get("loadDate") or "")
+        recalls = sorted({r.get("nhtsaCampaignNumber") for r in v.get("recalls") or [] if r.get("nhtsaCampaignNumber")}
+                         | h["camp"])
+        typ = v.get("type") or no[:2]
+        items.append({
+            "id": no,
+            "type": typ,
+            "date": max(e["date"] for e in events),
+            "events": events,
+            "opened": od.isoformat() if od else None,
+            "closed": cd.isoformat() if cd else None,
+            "status": "Closed" if cd else "Open",
+            "maker": maker_of(primary) or clean_mfr(primary) or "—",
+            "manufacturer": primary,
+            "subject": (v.get("subject") or "").strip(),
+            "summary": html_paras(v.get("summary")),
+            "components": [c.get("name") for c in v.get("components") or [] if c.get("name")],
+            "products": main_p,
+            "other_products": other_p,
+            "recalls": recalls,
+            "docs": [{"label": (x.get("summary") or x.get("fileName") or "").strip(), "url": x.get("url"),
+                      "date": (x.get("loadDate") or "")[:10]} for x in docs if x.get("url")],
+        })
+        log(f"  + {no} {items[-1]['maker']} {[e['kind'] for e in events]} {items[-1]['subject']}")
+    items.sort(key=lambda x: (x["date"], x["id"]), reverse=True)
+    return items
+
+
 # ---------------------------------------------------------------- main
 def main():
     today = datetime.now(JST).date()
@@ -516,6 +667,17 @@ def main():
 
     items.sort(key=lambda x: (x["date"], x["campaign"], x["amendment"]), reverse=True)
 
+    # ODI 調査（失敗してもリコール側は出力する）
+    inv_meta = {"generated_at": datetime.now(JST).isoformat(timespec="minutes"), "window_from": cutoff.isoformat(),
+                "window_to": today.isoformat()}
+    try:
+        invs = build_investigations(cutoff, today)
+    except Exception as e:  # noqa: BLE001
+        log(f"  ! investigations failed: {e}")
+        invs = []
+        inv_meta["error"] = "Could not load NHTSA investigation data in the latest update."
+    inv_meta["count"] = len(invs)
+
     # 辞書サブセット
     ext = os.environ.get("EXT_DIR", os.path.join(ROOT, ".ext"))
     texts = []
@@ -527,6 +689,8 @@ def main():
             texts.append(c["name"].lower())
         if it.get("changes"):
             texts.append(json.dumps(it["changes"]["sections"]))
+    for it in invs:
+        texts += [it["subject"]] + it["summary"] + [c.lower() for c in it["components"]]
     ej, level, gl = load_dict(os.path.join(ext, "EJDict"),
                               os.path.join(ext, "olp-en-cefrj", "cefrj-vocabulary-profile-1.5.csv"),
                               os.path.join(ext, "olp-en-cefrj", "octanove-vocabulary-profile-c1c2-1.0.csv"),
@@ -538,9 +702,11 @@ def main():
             "window_to": today.isoformat(), "count": len(items)}
     with open(os.path.join(OUT_DIR, "items.json"), "w", encoding="utf-8") as f:
         json.dump({"meta": meta, "items": items}, f, ensure_ascii=False, separators=(",", ":"))
+    with open(os.path.join(OUT_DIR, "inv.json"), "w", encoding="utf-8") as f:
+        json.dump({"meta": inv_meta, "items": invs}, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(OUT_DIR, "dict.json"), "w", encoding="utf-8") as f:
         json.dump(dic, f, ensure_ascii=False, separators=(",", ":"))
-    log(f"items={len(items)} dict={len(dic)}")
+    log(f"items={len(items)} investigations={len(invs)} dict={len(dic)}")
 
 
 def veh_all_motorcycle(p):

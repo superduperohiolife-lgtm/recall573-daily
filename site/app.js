@@ -1,4 +1,4 @@
-/* 573 Recall Reports — 一覧・明細・単語タップ和訳 */
+/* 573 Recall Reports + ODI 調査（PE / EA）— タブ一覧・明細・単語タップ和訳 */
 (() => {
   "use strict";
   const $ = (s) => document.querySelector(s);
@@ -31,30 +31,63 @@
   }
 
   // ------------------------------------------------------------ data
+  let INV = { meta: {}, items: [] };
+  const upd = (m) => (m && m.generated_at ? `Updated ${m.generated_at.slice(0, 16).replace("T", " ")} JST` : "");
+  const days = (m) => (m && m.window_from ? Math.round((new Date(m.window_to) - new Date(m.window_from)) / 864e5) : 30);
+
   async function load() {
     const opt = { cache: "no-cache" };
-    const [a, b] = await Promise.all([fetch("data/items.json", opt), fetch("data/dict.json", opt)]);
+    const [a, b, c] = await Promise.all([
+      fetch("data/items.json", opt),
+      fetch("data/dict.json", opt),
+      fetch("data/inv.json", opt).catch(() => null),
+    ]);
     DATA = await a.json();
     DICT = await b.json();
-    const g = DATA.meta.generated_at;
-    $("#sub").dataset.base = DATA.meta.window_from
-      ? `Major OEMs · Part 573 submissions ${DATA.meta.window_from} – ${DATA.meta.window_to} · Updated ${g.slice(0, 16).replace("T", " ")} JST`
-      : `Updated ${g.slice(0, 16).replace("T", " ")} JST`;
+    try {
+      if (c && c.ok) INV = await c.json();
+      else INV = { meta: { error: "Investigation data is not available yet. It appears after the next daily update." }, items: [] };
+    } catch (e) {
+      INV = { meta: { error: "Could not read investigation data." }, items: [] };
+    }
+    $("#cnt-recall").textContent = DATA.items.length;
+    $("#cnt-pe").textContent = INV.items.filter((x) => x.type === "PE").length;
+    $("#cnt-ea").textContent = INV.items.filter((x) => x.type === "EA").length;
+  }
+
+  // ------------------------------------------------------------ tabs
+  const TABS = {
+    recall: { title: "573 Recall Reports" },
+    pe: { title: "Preliminary Evaluations (PE)" },
+    ea: { title: "Engineering Analyses (EA)" },
+  };
+  function setChrome(tab) {
+    $("#tabs").hidden = !tab;
+    document.querySelectorAll("#tabs a").forEach((a) => {
+      const on = a.dataset.tab === tab;
+      a.classList.toggle("on", on);
+      a.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    $("#back").hidden = !!tab;
+    if (tab) {
+      sessionStorage.setItem("tab", tab);
+      document.title = TABS[tab].title;
+      $("#title").textContent = TABS[tab].title;
+    }
   }
 
   // ------------------------------------------------------------ list
   function renderList() {
-    document.title = "573 Recall Reports";
-    $("#title").textContent = "573 Recall Reports";
-    $("#sub").textContent = $("#sub").dataset.base || "";
-    $("#back").hidden = true;
+    setChrome("recall");
+    const m = DATA.meta;
+    $("#sub").textContent = m.window_from ? `Major OEMs · Part 573 submissions ${m.window_from} – ${m.window_to} · ${upd(m)}` : upd(m);
     const items = DATA.items;
     if (DATA.meta.error) {
       view.innerHTML = `<p class="empty">${esc(DATA.meta.error)}</p>`;
       return;
     }
     if (!items.length) {
-      view.innerHTML = `<p class="empty">No Part 573 reports from the selected manufacturers in the last 14 days.</p>`;
+      view.innerHTML = `<p class="empty">No Part 573 reports from the selected manufacturers in the last ${days(m)} days.</p>`;
       return;
     }
     let html = "", cur = null;
@@ -75,7 +108,95 @@
     html += `<p class="note">Listed by the submission date printed on each Part 573 report. NHTSA usually publishes a report several days after receipt, so the most recent days fill in over time.</p>`;
     html += footer();
     view.innerHTML = html;
-    window.scrollTo(0, +sessionStorage.getItem("listY") || 0);
+    window.scrollTo(0, +sessionStorage.getItem("listY:recall") || 0);
+  }
+
+  // ------------------------------------------------------------ investigations (PE / EA)
+  const invModels = (it) => {
+    const p = it.products || [];
+    if (!p.length) return "";
+    const s = p.slice(0, 2).map((x) => `${x.years ? x.years + " " : ""}${x.name}`);
+    return p.length > 2 ? `${s.join(", ")} +${p.length - 2}` : s.join(", ");
+  };
+  const evBadges = (it) => it.events.map((e) => `<span class="ev ${esc(e.kind)}">${esc(e.kind)}</span>`).join("");
+
+  function renderInvList(tab) {
+    setChrome(tab);
+    const type = tab.toUpperCase();
+    const m = INV.meta || {};
+    $("#sub").textContent = m.window_from
+      ? `All manufacturers · Opened or closed ${m.window_from} – ${m.window_to} · ${upd(m)}`
+      : upd(m);
+    const items = (INV.items || []).filter((x) => x.type === type);
+    if (m.error && !items.length) {
+      view.innerHTML = `<p class="empty">${esc(m.error)}</p>`;
+      return;
+    }
+    if (!items.length) {
+      view.innerHTML = `<p class="empty">No ${type === "PE" ? "Preliminary Evaluations" : "Engineering Analyses"} opened or closed in the last ${days(m)} days.</p>${footer()}`;
+      return;
+    }
+    let html = "", cur = null;
+    const byDay = {};
+    items.forEach((it) => (byDay[it.date] = (byDay[it.date] || 0) + 1));
+    for (const it of items) {
+      if (it.date !== cur) {
+        cur = it.date;
+        html += `<div class="day"><span>${esc(fmtDate(cur))}</span><span>${byDay[cur]}</span></div>`;
+      }
+      html += `<a class="card" href="#/i/${encodeURIComponent(it.id)}">
+        <div class="row"><span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
+        <div class="subj">${esc(it.subject)}</div>
+        <div class="row">${esc(it.id)}${it.components.length ? ` · ${esc(it.components[0])}` : ""}${invModels(it) ? ` · ${esc(invModels(it))}` : ""}</div>
+      </a>`;
+    }
+    html += `<p class="note">Listed by the date the investigation was opened or closed (whichever falls in the window, latest first). The investigation list comes from NHTSA's daily ODI flat file, so a new investigation can appear a day late.</p>`;
+    html += footer();
+    view.innerHTML = html;
+    window.scrollTo(0, +sessionStorage.getItem("listY:" + tab) || 0);
+  }
+
+  function renderInvDetail(id) {
+    const it = (INV.items || []).find((x) => x.id === id);
+    setChrome(null);
+    if (!it) {
+      view.innerHTML = `<p class="empty">This investigation is no longer in the ${days(INV.meta)}-day window.</p>`;
+      return;
+    }
+    document.title = `${it.id} ${it.subject}`;
+    $("#title").textContent = `${it.maker} · ${it.id}`;
+    $("#sub").textContent = it.type === "PE" ? "Preliminary Evaluation" : "Engineering Analysis";
+    const prod = (arr) =>
+      `<table class="veh"><tr><th>Make / Model</th><th style="text-align:right">MY</th></tr>` +
+      arr.map((p) => `<tr><td>${esc(p.name)}</td><td class="n">${esc(p.years || "—")}</td></tr>`).join("") + `</table>`;
+    const s1 = (it.summary || []).map((p) => `<p>${tap(p)}</p>`).join("");
+    let s2 = it.products?.length ? prod(it.products) : "";
+    if (it.other_products?.length)
+      s2 += `<div class="lbl">Also listed by NHTSA</div><p class="parts">${esc(it.other_products.map((p) => `${p.years} ${p.name}`.trim()).join(", "))}</p>`;
+    const s3 = (it.components || []).map((c) => `<p>${tap(c)}</p>`).join("");
+    const s4 = it.recalls?.length ? `<p>${it.recalls.map(esc).join(", ")}</p>` : "";
+    const s5 = it.docs?.length
+      ? `<ul class="docs">${it.docs.map((d) => `<li><a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.label)} ↗</a>${d.date ? `<span class="dt">Posted ${esc(d.date)}</span>` : ""}</li>`).join("")}</ul>`
+      : "";
+    view.innerHTML = `
+      <div class="hero">
+        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag typ">${esc(it.type)}</span><span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
+        <h2>${tap(it.subject)}</h2>
+        <div class="meta">
+          <span>Action no.</span><b>${esc(it.id)}</b>
+          <span>Opened</span><b>${it.opened ? esc(fmtDate(it.opened)) : "—"}</b>
+          <span>Closed</span><b>${it.closed ? esc(fmtDate(it.closed)) : "Open"}</b>
+          <span>Manufacturer</span><b>${esc(it.manufacturer || "—")}</b>
+        </div>
+      </div>
+      ${section(1, it.closed ? "Summary (closing)" : "Summary", s1, false, false)}
+      ${section(2, "Model year / Model", s2, false, false)}
+      ${section(3, "Components", s3, false, false)}
+      ${s4 ? section(4, "Related recalls", s4, false, false) : ""}
+      ${section(s4 ? 5 : 4, "Documents", s5, false, false)}
+      <p class="note">Tap an underlined word (Eiken Grade 2 / CEFR B1 and above) for its Japanese meaning.</p>
+      ${footer()}`;
+    window.scrollTo(0, 0);
   }
 
   function modelsShort(it) {
@@ -129,14 +250,14 @@
 
   function renderDetail(id) {
     const it = DATA.items.find((x) => x.id === id);
+    setChrome(null);
     if (!it) {
-      view.innerHTML = `<p class="empty">This report is no longer in the 14-day window.</p>`;
+      view.innerHTML = `<p class="empty">This report is no longer in the ${days(DATA.meta)}-day window.</p>`;
       return;
     }
     document.title = `${it.nhtsa_id} ${it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.nhtsa_id}`;
     $("#sub").textContent = fmtDate(it.date);
-    $("#back").hidden = false;
     const am = it.amendment > 0;
     const ch = am ? it.changes : null;
     const S = (ch && ch.sections) || {};
@@ -211,7 +332,7 @@
   }
 
   function footer() {
-    return `<footer class="src">Source: NHTSA Part 573 Safety Recall Reports (api.nhtsa.gov). Japanese meanings: EJDict (public domain).
+    return `<footer class="src">Source: NHTSA Part 573 Safety Recall Reports and ODI investigations (api.nhtsa.gov, static.nhtsa.gov). Japanese meanings: EJDict (public domain).
       Word levels: The CEFR-J Wordlist Version 1.5, compiled by Yukio Tono, Tokyo University of Foreign Studies; Octanove Vocabulary Profile C1/C2 (CC BY-SA 4.0).</footer>`;
   }
 
@@ -247,19 +368,44 @@
   });
 
   // ------------------------------------------------------------ routing
+  // #/recall #/pe #/ea = 一覧タブ、#/r/<id> = リコール明細、#/i/<id> = 調査明細
+  const curTab = () => {
+    const m = location.hash.match(/^#\/(recall|pe|ea)$/);
+    if (m) return m[1];
+    if (!location.hash || location.hash === "#" || location.hash === "#/") return sessionStorage.getItem("tab") || "recall";
+    return null;
+  };
   function route() {
     closeSheet();
-    const m = location.hash.match(/^#\/r\/(.+)$/);
-    if (m) renderDetail(decodeURIComponent(m[1]));
-    else renderList();
+    let m;
+    if ((m = location.hash.match(/^#\/r\/(.+)$/))) return renderDetail(decodeURIComponent(m[1]));
+    if ((m = location.hash.match(/^#\/i\/(.+)$/))) return renderInvDetail(decodeURIComponent(m[1]));
+    const tab = curTab() || "recall";
+    if (tab === "recall") renderList();
+    else renderInvList(tab);
   }
   window.addEventListener("hashchange", route);
   window.addEventListener("scroll", () => {
-    if (!location.hash.startsWith("#/r/")) sessionStorage.setItem("listY", String(window.scrollY));
+    const t = curTab();
+    if (t) sessionStorage.setItem("listY:" + t, String(window.scrollY));
   }, { passive: true });
+  // タブを切り替えたら、そのタブの前回スクロール位置に戻す（同じタブの再タップは先頭へ）
+  document.querySelectorAll("#tabs a").forEach((a) =>
+    a.addEventListener("click", (e) => {
+      if (curTab() === a.dataset.tab) {
+        e.preventDefault();
+        sessionStorage.setItem("listY:" + a.dataset.tab, "0");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (!location.hash.match(/^#\/(recall|pe|ea)$/)) {
+        e.preventDefault();
+        history.replaceState(null, "", a.getAttribute("href"));
+        route();
+      }
+    })
+  );
   $("#back").addEventListener("click", () => {
     if (history.length > 1) history.back();
-    else location.hash = "";
+    else location.hash = "#/" + (sessionStorage.getItem("tab") || "recall");
   });
 
   load()

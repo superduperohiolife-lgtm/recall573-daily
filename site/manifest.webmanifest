@@ -1,7 +1,7 @@
 {
   "name": "573 Recall Reports",
   "short_name": "573 Recalls",
-  "description": "Daily list of NHTSA Part 573 safety recall reports from major automakers",
+  "description": "Daily list of NHTSA Part 573 recall reports and ODI investigations (PE / EA)",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
