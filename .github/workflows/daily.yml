@@ -3,8 +3,8 @@ name: Daily build & deploy
 on:
   schedule:
     # 正時（毎時0分）は GitHub 側が混雑し、遅延・スキップが起きやすいため分をずらす
-    - cron: "23 20 * * *"  # 05:23 JST（本番）
-    - cron: "43 21 * * *"  # 06:43 JST（本番がスキップされた場合の予備。再実行しても結果は同じ）
+    - cron: "17 18 * * *"  # 03:17 JST（本番）
+    - cron: "37 19 * * *"  # 04:37 JST（本番がスキップされた場合の予備。再実行しても結果は同じ）
   workflow_dispatch:
   push:
     branches: [main]
