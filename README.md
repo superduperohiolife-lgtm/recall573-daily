@@ -3,7 +3,7 @@
 大手自動車メーカーの NHTSA Part 573 Safety Recall Report（573届出）を毎朝更新して表示する PWA。
 
 - 公開URL: https://superduperohiolife-lgtm.github.io/recall573-daily/
-- 更新: GitHub Actions で毎日 06:00 JST（cron `0 21 * * *` UTC）。GitHub 側の混雑で数十分遅れることがある
+- 更新: GitHub Actions で毎朝 05:23 JST（予備 06:43 JST）。GitHub の定時実行は混雑時に遅延・スキップがあるため2回設定
 - 手動更新: Actions → *Daily build & deploy* → *Run workflow*
 
 ## 表示仕様
