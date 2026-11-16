@@ -223,8 +223,14 @@
     if (onEl) onEl.classList.remove("on");
     onEl = null;
   }
+  // 和訳の表示中は、どこをタップしても1回で閉じる（別の単語なら表示を切り替える）
   document.addEventListener("click", (e) => {
     const w = e.target.closest(".w");
+    if (!sheet.hidden && (!w || w === onEl)) {
+      e.preventDefault();
+      closeSheet();
+      return;
+    }
     if (w) {
       e.preventDefault();
       const d = DICT[w.dataset.k];
@@ -237,9 +243,7 @@
       $("#sh-head").textContent = d.h !== w.dataset.k ? `→ ${d.h}` : "";
       $("#sh-mean").textContent = d.m;
       sheet.hidden = false;
-      return;
     }
-    if (!e.target.closest("#sheet") || e.target.closest("#sh-x")) closeSheet();
   });
 
   // ------------------------------------------------------------ routing

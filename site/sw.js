@@ -1,5 +1,5 @@
-// アプリ本体はキャッシュ優先、data/ はネットワーク優先（オフライン時は前回分を表示）
-const CACHE = "r573-v1";
+// ネットワーク優先、オフライン時は前回分を表示
+const CACHE = "r573-v2";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -27,16 +27,14 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
+  // アプリ本体もネットワーク優先（更新をすぐ反映）。オフライン時のみキャッシュ
   e.respondWith(
-    caches.match(e.request).then((hit) => {
-      const net = fetch(e.request)
-        .then((r) => {
-          const copy = r.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-          return r;
-        })
-        .catch(() => hit);
-      return hit || net;
-    })
+    fetch(e.request)
+      .then((r) => {
+        const copy = r.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return r;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
