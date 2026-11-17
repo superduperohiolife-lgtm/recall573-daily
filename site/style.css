@@ -31,7 +31,13 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .ev { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
 .ev.Opened { background: #e3f0ff; color: #0b4fb3; border: 1px solid #b7d3fb; }
 .ev.Closed { background: #eef0f3; color: #4b5260; border: 1px solid #d5d9e0; }
-.tag.typ { background: var(--navy); color: #fff; }
+.tag.typ { background: var(--navy); color: #fff; letter-spacing: .03em; }
+.tag.typ.PE { background: #0b6e99; }
+.tag.typ.EA { background: #b3261e; }
+.card.inv { border-left: 4px solid var(--line); }
+.card.inv.PE { border-left-color: #0b6e99; }
+.card.inv.EA { border-left-color: #b3261e; }
+.legend-inv { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 4px 0; font-size: 12px; color: var(--muted); }
 .docs { margin: 0; padding: 0; list-style: none; }
 .docs li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
 .docs li:last-child { border-bottom: 0; }

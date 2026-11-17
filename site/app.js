@@ -1,4 +1,4 @@
-/* 573 Recall Reports + ODI 調査（PE / EA）— タブ一覧・明細・単語タップ和訳 */
+/* 573 Recall Reports + ODI 調査（PE / EA を1タブに統合）— タブ一覧・明細・単語タップ和訳 */
 (() => {
   "use strict";
   const $ = (s) => document.querySelector(s);
@@ -51,15 +51,13 @@
       INV = { meta: { error: "Could not read investigation data." }, items: [] };
     }
     $("#cnt-recall").textContent = DATA.items.length;
-    $("#cnt-pe").textContent = INV.items.filter((x) => x.type === "PE").length;
-    $("#cnt-ea").textContent = INV.items.filter((x) => x.type === "EA").length;
+    $("#cnt-inv").textContent = INV.items.length;
   }
 
   // ------------------------------------------------------------ tabs
   const TABS = {
     recall: { title: "573 Recall Reports" },
-    pe: { title: "Preliminary Evaluations (PE)" },
-    ea: { title: "Engineering Analyses (EA)" },
+    inv: { title: "ODI Investigations (PE / EA)" },
   };
   function setChrome(tab) {
     $("#tabs").hidden = !tab;
@@ -118,25 +116,30 @@
     const s = p.slice(0, 2).map((x) => `${x.years ? x.years + " " : ""}${x.name}`);
     return p.length > 2 ? `${s.join(", ")} +${p.length - 2}` : s.join(", ");
   };
+  // PE / EA の種別バッジ（色で区別）
+  const typeBadge = (it) => `<span class="tag typ ${esc(it.type)}">${esc(it.type)}</span>`;
+  const TYPE_NAME = { PE: "Preliminary Evaluation", EA: "Engineering Analysis" };
   const evBadges = (it) => it.events.map((e) => `<span class="ev ${esc(e.kind)}">${esc(e.kind)}</span>`).join("");
 
-  function renderInvList(tab) {
-    setChrome(tab);
-    const type = tab.toUpperCase();
+  function renderInvList() {
+    setChrome("inv");
     const m = INV.meta || {};
     $("#sub").textContent = m.window_from
       ? `All manufacturers · Opened or closed ${m.window_from} – ${m.window_to} · ${upd(m)}`
       : upd(m);
-    const items = (INV.items || []).filter((x) => x.type === type);
+    const items = INV.items || [];
     if (m.error && !items.length) {
       view.innerHTML = `<p class="empty">${esc(m.error)}</p>`;
       return;
     }
+    const nPE = items.filter((x) => x.type === "PE").length;
+    const nEA = items.filter((x) => x.type === "EA").length;
+    const legend = `<div class="legend-inv"><span><span class="tag typ PE">PE</span> Preliminary Evaluation · ${nPE}</span><span><span class="tag typ EA">EA</span> Engineering Analysis · ${nEA}</span></div>`;
     if (!items.length) {
-      view.innerHTML = `<p class="empty">No ${type === "PE" ? "Preliminary Evaluations" : "Engineering Analyses"} opened or closed in the last ${days(m)} days.</p>${footer()}`;
+      view.innerHTML = `${legend}<p class="empty">No PE or EA investigations opened or closed in the last ${days(m)} days.</p>${footer()}`;
       return;
     }
-    let html = "", cur = null;
+    let html = legend, cur = null;
     const byDay = {};
     items.forEach((it) => (byDay[it.date] = (byDay[it.date] || 0) + 1));
     for (const it of items) {
@@ -144,8 +147,8 @@
         cur = it.date;
         html += `<div class="day"><span>${esc(fmtDate(cur))}</span><span>${byDay[cur]}</span></div>`;
       }
-      html += `<a class="card" href="#/i/${encodeURIComponent(it.id)}">
-        <div class="row"><span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
+      html += `<a class="card inv ${esc(it.type)}" href="#/i/${encodeURIComponent(it.id)}">
+        <div class="row">${typeBadge(it)}<span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
         <div class="subj">${esc(it.subject)}</div>
         <div class="row">${esc(it.id)}${it.components.length ? ` · ${esc(it.components[0])}` : ""}${invModels(it) ? ` · ${esc(invModels(it))}` : ""}</div>
       </a>`;
@@ -153,7 +156,7 @@
     html += `<p class="note">Listed by the date the investigation was opened or closed (whichever falls in the window, latest first). The investigation list comes from NHTSA's daily ODI flat file, so a new investigation can appear a day late.</p>`;
     html += footer();
     view.innerHTML = html;
-    window.scrollTo(0, +sessionStorage.getItem("listY:" + tab) || 0);
+    window.scrollTo(0, +sessionStorage.getItem("listY:inv") || 0);
   }
 
   function renderInvDetail(id) {
@@ -165,7 +168,7 @@
     }
     document.title = `${it.id} ${it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.id}`;
-    $("#sub").textContent = it.type === "PE" ? "Preliminary Evaluation" : "Engineering Analysis";
+    $("#sub").textContent = TYPE_NAME[it.type] || it.type;
     const prod = (arr) =>
       `<table class="veh"><tr><th>Make / Model</th><th style="text-align:right">MY</th></tr>` +
       arr.map((p) => `<tr><td>${esc(p.name)}</td><td class="n">${esc(p.years || "—")}</td></tr>`).join("") + `</table>`;
@@ -180,7 +183,7 @@
       : "";
     view.innerHTML = `
       <div class="hero">
-        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag typ">${esc(it.type)}</span><span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
+        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${typeBadge(it)}<span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
         <h2>${tap(it.subject)}</h2>
         <div class="meta">
           <span>Action no.</span><b>${esc(it.id)}</b>
@@ -368,11 +371,12 @@
   });
 
   // ------------------------------------------------------------ routing
-  // #/recall #/pe #/ea = 一覧タブ、#/r/<id> = リコール明細、#/i/<id> = 調査明細
+  // #/recall #/inv = 一覧タブ、#/r/<id> = リコール明細、#/i/<id> = 調査明細（旧 #/pe #/ea は #/inv 扱い）
+  const normTab = (t) => (t === "pe" || t === "ea" ? "inv" : t === "inv" || t === "recall" ? t : null);
   const curTab = () => {
-    const m = location.hash.match(/^#\/(recall|pe|ea)$/);
-    if (m) return m[1];
-    if (!location.hash || location.hash === "#" || location.hash === "#/") return sessionStorage.getItem("tab") || "recall";
+    const m = location.hash.match(/^#\/(recall|inv|pe|ea)$/);
+    if (m) return normTab(m[1]);
+    if (!location.hash || location.hash === "#" || location.hash === "#/") return normTab(sessionStorage.getItem("tab")) || "recall";
     return null;
   };
   function route() {
@@ -382,7 +386,7 @@
     if ((m = location.hash.match(/^#\/i\/(.+)$/))) return renderInvDetail(decodeURIComponent(m[1]));
     const tab = curTab() || "recall";
     if (tab === "recall") renderList();
-    else renderInvList(tab);
+    else renderInvList();
   }
   window.addEventListener("hashchange", route);
   window.addEventListener("scroll", () => {
@@ -396,7 +400,7 @@
         e.preventDefault();
         sessionStorage.setItem("listY:" + a.dataset.tab, "0");
         window.scrollTo({ top: 0, behavior: "smooth" });
-      } else if (!location.hash.match(/^#\/(recall|pe|ea)$/)) {
+      } else if (!location.hash.match(/^#\/(recall|inv|pe|ea)$/)) {
         e.preventDefault();
         history.replaceState(null, "", a.getAttribute("href"));
         route();
@@ -405,7 +409,7 @@
   );
   $("#back").addEventListener("click", () => {
     if (history.length > 1) history.back();
-    else location.hash = "#/" + (sessionStorage.getItem("tab") || "recall");
+    else location.hash = "#/" + (normTab(sessionStorage.getItem("tab")) || "recall");
   });
 
   load()
