@@ -35,6 +35,9 @@ API = "https://api.nhtsa.gov/safetyIssues/byDate?filter=recalls&dateStart={s}&da
 INV_FLAT = "https://static.nhtsa.gov/odi/ffdd/inv/FLAT_INV.zip"
 INV_API = "https://api.nhtsa.gov/safetyIssues/byNhtsaId?nhtsaId={}"
 INV_TYPES = ("PE", "EA")
+# PE/EA の表示タイトル（部品＋症状）。NHTSA の subject は部品名だけのことがあるため、
+# Claude のスケジュールタスクが summary を読んで作成し、このファイルに追記する
+INV_TITLES = os.path.join(ROOT, "scripts", "inv_titles.json")
 UA = {"User-Agent": "recall573-daily (GitHub Actions; public NHTSA data)"}
 JST = timezone(timedelta(hours=9))
 PARSER_VERSION = "1"  # 解析ロジックを変えたら上げる（キャッシュ無効化）
@@ -495,7 +498,16 @@ def products_view(products, primary):
     return fmt(main), fmt(other)
 
 
+def load_inv_titles():
+    try:
+        with open(INV_TITLES, encoding="utf-8") as f:
+            return {k: v.strip() for k, v in json.load(f).items() if isinstance(v, str) and v.strip()}
+    except FileNotFoundError:
+        return {}
+
+
 def build_investigations(cutoff, today):
+    titles = load_inv_titles()
     hits, last_no = flat_investigations(cutoff)
     log(f"investigations in flat file window: {sorted(hits)}")
     # フラットファイル更新前の新規開始分を拾うため、各種別の最新番号の次を数件だけ照会
@@ -548,6 +560,8 @@ def build_investigations(cutoff, today):
             "maker": maker_of(primary) or clean_mfr(primary) or "—",
             "manufacturer": primary,
             "subject": (v.get("subject") or "").strip(),
+            "title": titles.get(no) or (v.get("subject") or "").strip(),
+            "titled": no in titles,
             "summary": html_paras(v.get("summary")),
             "components": [c.get("name") for c in v.get("components") or [] if c.get("name")],
             "products": main_p,
@@ -562,7 +576,19 @@ def build_investigations(cutoff, today):
 
 
 # ---------------------------------------------------------------- main
+def list_untitled():
+    """タイトル未作成の PE/EA を JSON で標準出力に出す（スケジュールタスク用）。"""
+    today = datetime.now(JST).date()
+    invs = build_investigations(today - timedelta(days=WINDOW_DAYS), today)
+    out = [{"id": i["id"], "type": i["type"], "subject": i["subject"], "components": i["components"],
+            "products": [p["name"] for p in i["products"]][:5], "summary": i["summary"]}
+           for i in invs if not i["titled"]]
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+
+
 def main():
+    if "--list-untitled" in sys.argv:
+        return list_untitled()
     today = datetime.now(JST).date()
     start = today - timedelta(days=FETCH_MARGIN_DAYS)
     cutoff = today - timedelta(days=WINDOW_DAYS)
@@ -690,7 +716,7 @@ def main():
         if it.get("changes"):
             texts.append(json.dumps(it["changes"]["sections"]))
     for it in invs:
-        texts += [it["subject"]] + it["summary"] + [c.lower() for c in it["components"]]
+        texts += [it["subject"], it["title"]] + it["summary"] + [c.lower() for c in it["components"]]
     ej, level, gl = load_dict(os.path.join(ext, "EJDict"),
                               os.path.join(ext, "olp-en-cefrj", "cefrj-vocabulary-profile-1.5.csv"),
                               os.path.join(ext, "olp-en-cefrj", "octanove-vocabulary-profile-c1c2-1.0.csv"),

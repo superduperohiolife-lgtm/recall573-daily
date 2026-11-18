@@ -149,7 +149,7 @@
       }
       html += `<a class="card inv ${esc(it.type)}" href="#/i/${encodeURIComponent(it.id)}">
         <div class="row">${typeBadge(it)}<span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
-        <div class="subj">${esc(it.subject)}</div>
+        <div class="subj">${esc(it.title || it.subject)}</div>
         <div class="row">${esc(it.id)}${it.components.length ? ` · ${esc(it.components[0])}` : ""}${invModels(it) ? ` · ${esc(invModels(it))}` : ""}</div>
       </a>`;
     }
@@ -166,7 +166,7 @@
       view.innerHTML = `<p class="empty">This investigation is no longer in the ${days(INV.meta)}-day window.</p>`;
       return;
     }
-    document.title = `${it.id} ${it.subject}`;
+    document.title = `${it.id} ${it.title || it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.id}`;
     $("#sub").textContent = TYPE_NAME[it.type] || it.type;
     const prod = (arr) =>
@@ -184,8 +184,9 @@
     view.innerHTML = `
       <div class="hero">
         <div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${typeBadge(it)}<span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
-        <h2>${tap(it.subject)}</h2>
+        <h2>${tap(it.title || it.subject)}</h2>
         <div class="meta">
+          ${it.title && it.title !== it.subject ? `<span>NHTSA subject</span><b>${tap(it.subject)}</b>` : ""}
           <span>Action no.</span><b>${esc(it.id)}</b>
           <span>Opened</span><b>${it.opened ? esc(fmtDate(it.opened)) : "—"}</b>
           <span>Closed</span><b>${it.closed ? esc(fmtDate(it.closed)) : "Open"}</b>
