@@ -38,6 +38,8 @@ INV_TYPES = ("PE", "EA", "RQ")  # RQ = Recall Query（リコール対策の有�
 # PE/EA の表示タイトル（部品＋症状）。NHTSA の subject は部品名だけのことがあるため、
 # Claude のスケジュールタスクが summary を読んで作成し、このファイルに追記する
 INV_TITLES = os.path.join(ROOT, "scripts", "inv_titles.json")
+# リコールの表示タイトル（部品＋症状）。キーは NHTSA のキャンペーン番号（例: 26V748000）。改訂版も同じタイトル
+RECALL_TITLES = os.path.join(ROOT, "scripts", "recall_titles.json")
 UA = {"User-Agent": "recall573-daily (GitHub Actions; public NHTSA data)"}
 JST = timezone(timedelta(hours=9))
 PARSER_VERSION = "1"  # 解析ロジックを変えたら上げる（キャッシュ無効化）
@@ -500,9 +502,9 @@ def products_view(products, primary):
     return fmt(main), fmt(other)
 
 
-def load_inv_titles():
+def load_inv_titles(path=INV_TITLES):
     try:
-        with open(INV_TITLES, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return {k: v.strip() for k, v in json.load(f).items() if isinstance(v, str) and v.strip()}
     except FileNotFoundError:
         return {}
@@ -578,19 +580,10 @@ def build_investigations(cutoff, today):
 
 
 # ---------------------------------------------------------------- main
-def list_untitled():
-    """タイトル未作成の PE/EA を JSON で標準出力に出す（スケジュールタスク用）。"""
-    today = datetime.now(JST).date()
-    invs = build_investigations(today - timedelta(days=WINDOW_DAYS), today)
-    out = [{"id": i["id"], "type": i["type"], "subject": i["subject"], "components": i["components"],
-            "products": [p["name"] for p in i["products"]][:5], "summary": i["summary"]}
-           for i in invs if not i["titled"]]
-    print(json.dumps(out, ensure_ascii=False, indent=1))
-
-
 def main():
-    if "--list-untitled" in sys.argv:
-        return list_untitled()
+    # --list-untitled: タイトル未作成のリコール・調査を JSON で標準出力に出す（スケジュールタスク用。site/data は書かない）
+    list_mode = "--list-untitled" in sys.argv
+    rtitles = load_inv_titles(RECALL_TITLES)
     today = datetime.now(JST).date()
     start = today - timedelta(days=FETCH_MARGIN_DAYS)
     cutoff = today - timedelta(days=WINDOW_DAYS)
@@ -671,6 +664,8 @@ def main():
                 "manufacturer": r.get("manufacturer"),
                 "mfr_campaign": r.get("mfrCampaignNumber"),
                 "subject": r.get("subject"),
+                "title": rtitles.get(camp) or r.get("subject"),
+                "titled": camp in rtitles,
                 "doc_url": d["url"],
                 "doc_label": d["summary"].strip(),
                 "motorcycle": veh_all_motorcycle(p),
@@ -706,11 +701,26 @@ def main():
         inv_meta["error"] = "Could not load NHTSA investigation data in the latest update."
     inv_meta["count"] = len(invs)
 
+    if list_mode:
+        seen, rec_out = set(), []
+        for it in items:
+            if it["titled"] or it["campaign"] in seen:
+                continue
+            seen.add(it["campaign"])
+            rec_out.append({"id": it["campaign"], "subject": it["subject"],
+                            "components": [c["name"] for c in it.get("components", [])][:5],
+                            "defect": it.get("defect", [])[:2], "risk": it.get("risk", [])[:2]})
+        inv_out = [{"id": i["id"], "type": i["type"], "subject": i["subject"], "components": i["components"],
+                    "products": [p["name"] for p in i["products"]][:5], "summary": i["summary"]}
+                   for i in invs if not i["titled"]]
+        print(json.dumps({"recalls": rec_out, "investigations": inv_out}, ensure_ascii=False, indent=1))
+        return
+
     # 辞書サブセット
     ext = os.environ.get("EXT_DIR", os.path.join(ROOT, ".ext"))
     texts = []
     for it in items:
-        for k in DIFF_KEYS + ["subject"]:
+        for k in DIFF_KEYS + ["subject", "title"]:
             v = it.get(k)
             texts += v if isinstance(v, list) else [v or ""]
         for c in it.get("components", []):

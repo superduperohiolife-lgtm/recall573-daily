@@ -99,7 +99,7 @@
       html += `<a class="card" href="#/r/${encodeURIComponent(it.id)}">
         <div class="row"><span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}
         ${it.amendment ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
-        <div class="subj">${esc(it.subject)}</div>
+        <div class="subj">${esc(it.title || it.subject)}</div>
         <div class="row">${esc(it.nhtsa_id)} · ${esc(it.total || "—")} units · ${esc(modelsShort(it))}</div>
       </a>`;
     }
@@ -258,7 +258,7 @@
       view.innerHTML = `<p class="empty">This report is no longer in the ${days(DATA.meta)}-day window.</p>`;
       return;
     }
-    document.title = `${it.nhtsa_id} ${it.subject}`;
+    document.title = `${it.nhtsa_id} ${it.title || it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.nhtsa_id}`;
     $("#sub").textContent = fmtDate(it.date);
     const am = it.amendment > 0;
@@ -276,7 +276,8 @@
 
     // 1 Defect
     const s1 =
-      `<div class="lbl">Defect name</div><p>${tap(it.subject)}</p>` +
+      `<div class="lbl">Defect name</div><p>${tap(it.title || it.subject)}</p>` +
+      (it.title && it.title !== it.subject ? `<div class="lbl">NHTSA subject</div><p>${tap(it.subject)}</p>` : "") +
       (it.defect?.length || S.defect ? `<div class="lbl">Description</div>${block("defect", it.defect, ch)}` : "") +
       (it.risk?.length || S.risk ? `<div class="lbl">Safety risk</div>${block("risk", it.risk, ch)}` : "") +
       (it.cause?.length || S.cause ? `<div class="lbl">Cause</div>${block("cause", it.cause, ch)}` : "");
@@ -312,7 +313,7 @@
     view.innerHTML = `
       <div class="hero">
         <div class="row" style="display:flex;gap:6px;flex-wrap:wrap"><span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}${am ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
-        <h2>${tap(it.subject)}</h2>
+        <h2>${tap(it.title || it.subject)}</h2>
         <div class="meta">
           <span>NHTSA ID</span><b>${esc(it.nhtsa_id)}</b>
           <span>Submitted</span><b>${esc(fmtDate(it.date))}</b>
