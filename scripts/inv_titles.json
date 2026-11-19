@@ -5,5 +5,8 @@
  "PE25017": "Inaccurate Rear Passenger Seat Belt Warning Status",
  "PE25019": "Rear Seat Belt Stitching Failure and Detachment",
  "PE26008": "Burn Injuries From Side Airbag Deployment",
- "PE26009": "Car Seat Magnetic Chest Clip Breaks Into Small Pieces"
+ "PE26009": "Car Seat Magnetic Chest Clip Breaks Into Small Pieces",
+ "RQ26004": "Rear-View Camera Image Freezes After Recall Remedy",
+ "RQ26005": "Loose Hardware in EV Battery Packs Causes Thermal Events",
+ "RQ26006": "Self-Driving System Passes School Buses Despite Recall Remedy"
 }

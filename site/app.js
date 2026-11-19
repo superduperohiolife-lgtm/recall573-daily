@@ -57,7 +57,7 @@
   // ------------------------------------------------------------ tabs
   const TABS = {
     recall: { title: "573 Recall Reports" },
-    inv: { title: "ODI Investigations (PE / EA)" },
+    inv: { title: "ODI Investigations (PE / EA / RQ)" },
   };
   function setChrome(tab) {
     $("#tabs").hidden = !tab;
@@ -118,7 +118,7 @@
   };
   // PE / EA の種別バッジ（色で区別）
   const typeBadge = (it) => `<span class="tag typ ${esc(it.type)}">${esc(it.type)}</span>`;
-  const TYPE_NAME = { PE: "Preliminary Evaluation", EA: "Engineering Analysis" };
+  const TYPE_NAME = { PE: "Preliminary Evaluation", EA: "Engineering Analysis", RQ: "Recall Query" };
   const evBadges = (it) => it.events.map((e) => `<span class="ev ${esc(e.kind)}">${esc(e.kind)}</span>`).join("");
 
   function renderInvList() {
@@ -132,11 +132,10 @@
       view.innerHTML = `<p class="empty">${esc(m.error)}</p>`;
       return;
     }
-    const nPE = items.filter((x) => x.type === "PE").length;
-    const nEA = items.filter((x) => x.type === "EA").length;
-    const legend = `<div class="legend-inv"><span><span class="tag typ PE">PE</span> Preliminary Evaluation · ${nPE}</span><span><span class="tag typ EA">EA</span> Engineering Analysis · ${nEA}</span></div>`;
+    const n = (t) => items.filter((x) => x.type === t).length;
+    const legend = `<div class="legend-inv">${["PE", "EA", "RQ"].map((t) => `<span><span class="tag typ ${t}">${t}</span> ${TYPE_NAME[t]} · ${n(t)}</span>`).join("")}</div>`;
     if (!items.length) {
-      view.innerHTML = `${legend}<p class="empty">No PE or EA investigations opened or closed in the last ${days(m)} days.</p>${footer()}`;
+      view.innerHTML = `${legend}<p class="empty">No PE, EA or RQ investigations opened or closed in the last ${days(m)} days.</p>${footer()}`;
       return;
     }
     let html = legend, cur = null;

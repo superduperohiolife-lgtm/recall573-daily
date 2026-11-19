@@ -34,7 +34,7 @@ API = "https://api.nhtsa.gov/safetyIssues/byDate?filter=recalls&dateStart={s}&da
 # ODI 調査: 一覧は日次更新のフラットファイル、明細は byNhtsaId（byDate は調査を返さないため）
 INV_FLAT = "https://static.nhtsa.gov/odi/ffdd/inv/FLAT_INV.zip"
 INV_API = "https://api.nhtsa.gov/safetyIssues/byNhtsaId?nhtsaId={}"
-INV_TYPES = ("PE", "EA")
+INV_TYPES = ("PE", "EA", "RQ")  # RQ = Recall Query（リコール対策の有効性調査）
 # PE/EA の表示タイトル（部品＋症状）。NHTSA の subject は部品名だけのことがあるため、
 # Claude のスケジュールタスクが summary を読んで作成し、このファイルに追記する
 INV_TITLES = os.path.join(ROOT, "scripts", "inv_titles.json")
@@ -62,8 +62,10 @@ MAKERS = [
     (r"^Daimler Vans USA", "Mercedes-Benz"),
     (r"^Tesla", "Tesla"),
     (r"^Volvo Car USA", "Volvo"),
+    (r"^Waymo", "Waymo"),
 ]
 MOTORCYCLE_OK = {"Honda"}  # 二輪を含めるのは Honda のみ
+EQUIPMENT_OK = {"Waymo"}  # 自動運転システムは装備品（xxE）として届け出られるため、車両以外も対象にする
 
 
 def log(*a):
@@ -444,7 +446,7 @@ def flat_investigations(cutoff):
             p = raw.rstrip("\r\n").split("\t")
             if len(p) < 9 or p[0][:2] not in INV_TYPES:
                 continue
-            m = re.fullmatch(r"(PE|EA)(\d{2})(\d{3})", p[0])
+            m = re.fullmatch(r"(PE|EA|RQ)(\d{2})(\d{3})", p[0])
             if m:
                 last_no[(m[1], m[2])] = max(last_no[(m[1], m[2])], int(m[3]))
             od, cd = _ymd(p[6]), _ymd(p[7])
@@ -617,10 +619,10 @@ def main():
     items = []
     for r in recs:
         camp = r.get("nhtsaCampaignNumber", "")
-        if len(camp) < 3 or camp[2] != "V":
-            continue
         mk = maker_of(r.get("manufacturer"))
-        if not mk:
+        if not mk or len(camp) < 3:
+            continue
+        if camp[2] != "V" and not (camp[2] == "E" and mk in EQUIPMENT_OK):
             continue
         docs = [d for d in r.get("associatedDocuments", [])
                 if d.get("fileName", "").upper().startswith("RCLRPT") and "573" in d.get("summary", "")]

@@ -34,9 +34,11 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .tag.typ { background: var(--navy); color: #fff; letter-spacing: .03em; }
 .tag.typ.PE { background: #0b6e99; }
 .tag.typ.EA { background: #b3261e; }
+.tag.typ.RQ { background: #6a3fb5; }
 .card.inv { border-left: 4px solid var(--line); }
 .card.inv.PE { border-left-color: #0b6e99; }
 .card.inv.EA { border-left-color: #b3261e; }
+.card.inv.RQ { border-left-color: #6a3fb5; }
 .legend-inv { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 4px 0; font-size: 12px; color: var(--muted); }
 .docs { margin: 0; padding: 0; list-style: none; }
 .docs li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
