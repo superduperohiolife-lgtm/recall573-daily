@@ -19,5 +19,7 @@
  "26V732000": "Obstructed LATCH Anchors May Prevent Child Seat Securement",
  "26V733000": "Park Outside: Water Pump Connector May Short Circuit",
  "26V735000": "Brake Control Module Software May Cause Loss of Brake Pressure",
- "26V748000": "Front Passenger Air Bag Inflator May Rupture"
+ "26V748000": "Front Passenger Air Bag Inflator May Rupture",
+ "26V749000": "Fuel Flange Joint May Separate and Leak Fuel",
+ "26V750000": "Cracks in Camshaft May Cause Engine Stall"
 }
