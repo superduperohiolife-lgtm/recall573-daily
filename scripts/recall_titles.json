@@ -21,5 +21,7 @@
  "26V735000": "Brake Control Module Software May Cause Loss of Brake Pressure",
  "26V748000": "Front Passenger Air Bag Inflator May Rupture",
  "26V749000": "Fuel Flange Joint May Separate and Leak Fuel",
- "26V750000": "Cracks in Camshaft May Cause Engine Stall"
+ "26V750000": "Cracks in Camshaft May Cause Engine Stall",
+ "26V756000": "ABS Module Software May Allow Shifting From Park Without Brake Pedal",
+ "26V765000": "Air Bag Inflators May Rupture"
 }
