@@ -28,6 +28,8 @@ body { padding-bottom: env(safe-area-inset-bottom); }
 .tabs .cnt { font-size: 12px; font-weight: 700; padding: 0 7px; border-radius: 999px; background: rgba(255,255,255,.2); line-height: 18px; }
 .tabs .cnt:empty { display: none; }
 .tabs a.on .cnt { background: #e8ecf4; }
+.tabs .newpill { font-size: 11px; font-weight: 800; padding: 0 7px; border-radius: 999px; background: var(--accent); color: #fff; line-height: 18px; letter-spacing: .03em; }
+.tabs .newpill[hidden] { display: none; }
 .ev { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 700; font-size: 12px; }
 .ev.Opened { background: #e3f0ff; color: #0b4fb3; border: 1px solid #b7d3fb; }
 .ev.Closed { background: #eef0f3; color: #4b5260; border: 1px solid #d5d9e0; }
@@ -112,3 +114,10 @@ p.ins, p.del, li.ins, li.del { padding: 2px 6px; }
 footer.src { font-size: 11px; color: var(--muted); margin: 24px 4px; line-height: 1.6; }
 footer.src a { color: var(--muted); }
 span.del + span.ins { margin-left: 3px; }
+
+/* NEW（初掲載から24時間以内・未読） */
+.badge-new { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 800; font-size: 12px; letter-spacing: .04em; }
+.card.is-new { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.card.inv.is-new { border-top-color: var(--accent); border-right-color: var(--accent); border-bottom-color: var(--accent); box-shadow: none; }
+.newbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 2px 0; padding: 10px 12px; border-radius: 12px; background: #fdecee; color: var(--ink); font-size: 14px; }
+.newbar button { flex: none; border: 1px solid #e7b3bb; background: #fff; color: var(--accent); font: inherit; font-size: 13px; font-weight: 700; padding: 5px 10px; border-radius: 8px; }

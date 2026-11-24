@@ -11,6 +11,7 @@
 
 - タブ: **Recall / PE・EA・RQ** の2タブ（`#/recall` `#/inv`）。PE・EA・RQ（Recall Query）は同じタブに日付順で並び、色付きバッジ（PE=青、EA=赤、RQ=紫）と左端の色帯で区別。タブごとにスクロール位置を保持、同じタブの再タップで先頭へ
 - タイトル: 一覧・明細のタイトルは「部品＋症状」。NHTSA の件名に部品か症状が欠ける場合は、573 の Defect / Safety risk（調査は Summary）の記載だけを根拠に作り直し、明細に NHTSA の元の件名も併記する。保存先は `scripts/recall_titles.json`（キャンペーン番号）と `scripts/inv_titles.json`（調査番号）。新規分は Claude の日次タスクが `python3 scripts/build.py --list-untitled` で洗い出して追記する
+- NEW 表示: 公開中の前回データに無かった項目（初掲載）に `added`（初掲載日時）を付け、生成から24時間以内のものに NEW バッジを表示。タブには未読の NEW 件数、一覧上部に「Mark all read」。明細を開くとその端末では既読（localStorage）。調査は Opened→Closed のように状態が増えたら再び NEW。前回データ（`PAGES_DATA`）が取れない回は NEW なし
 - Recall 一覧: 573 レポートに記載の提出日（Submission Date）で過去30日分を降順表示。改訂版（Amendment）も1件として並べる
 - PE / EA 一覧: 全メーカー（車両・装備品とも）対象。過去30日以内に開始（Opened）または終了（Closed）した調査を、その日付で降順表示
 - PE / EA 明細: 概要（ODI の要約原文）/ 年式・車名 / 部品区分 / 関連リコール / 公開文書（Opening・Closing Resume 等の PDF）

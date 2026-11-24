@@ -40,6 +40,8 @@ INV_TYPES = ("PE", "EA", "RQ")  # RQ = Recall Query（リコール対策の有�
 INV_TITLES = os.path.join(ROOT, "scripts", "inv_titles.json")
 # リコールの表示タイトル（部品＋症状）。キーは NHTSA のキャンペーン番号（例: 26V748000）。改訂版も同じタイトル
 RECALL_TITLES = os.path.join(ROOT, "scripts", "recall_titles.json")
+PAGES_DATA = os.environ.get("PAGES_DATA", "https://superduperohiolife-lgtm.github.io/recall573-daily/data/")
+NEW_HOURS = 24  # 公開データに初めて載ってからこの時間は NEW 表示
 UA = {"User-Agent": "recall573-daily (GitHub Actions; public NHTSA data)"}
 JST = timezone(timedelta(hours=9))
 PARSER_VERSION = "1"  # 解析ロジックを変えたら上げる（キャッシュ無効化）
@@ -579,6 +581,37 @@ def build_investigations(cutoff, today):
     return items
 
 
+# ---------------------------------------------------------------- NEW（初掲載日時）
+def new_key(kind, it):
+    """既読管理・初掲載判定のキー。調査は Opened→Closed のように状態が増えたら別キー（＝再び NEW）"""
+    if kind == "r":
+        return "r:" + it["id"]
+    return "i:" + it["id"] + "|" + ",".join(e["kind"] for e in it.get("events", []))
+
+
+def stamp_added(kind, fname, items, now_iso):
+    """公開中の前回データと突き合わせ、各項目に初掲載日時 added を付ける。
+    前回データに無いキー＝今回初掲載（added=now）。前回データが取れなければ全件 added="" （NEW なし）"""
+    prev = None
+    try:
+        prev = {new_key(kind, x): x.get("added", "") for x in json.loads(http_get(PAGES_DATA + fname, tries=2))["items"]}
+    except Exception as e:  # noqa: BLE001
+        log(f"  ! previous {fname} unavailable, no NEW marks this run: {e}")
+    n = 0
+    for it in items:
+        k = new_key(kind, it)
+        it["nk"] = k
+        if prev is None:
+            it["added"] = ""
+        elif k in prev:
+            it["added"] = prev[k]
+        else:
+            it["added"] = now_iso
+            n += 1
+            log(f"  NEW {k}")
+    return n
+
+
 # ---------------------------------------------------------------- main
 def main():
     # --list-untitled: タイトル未作成のリコール・調査を JSON で標準出力に出す（スケジュールタスク用。site/data は書かない）
@@ -736,15 +769,19 @@ def main():
     dic = build_dict(texts, ej, level, gl)
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    meta = {"generated_at": datetime.now(JST).isoformat(timespec="minutes"), "window_from": cutoff.isoformat(),
-            "window_to": today.isoformat(), "count": len(items)}
+    now_iso = datetime.now(JST).isoformat(timespec="minutes")
+    n_new = stamp_added("r", "items.json", items, now_iso)
+    n_new_inv = stamp_added("i", "inv.json", invs, now_iso)
+    inv_meta["new_hours"] = NEW_HOURS
+    meta = {"generated_at": now_iso, "window_from": cutoff.isoformat(),
+            "window_to": today.isoformat(), "count": len(items), "new_hours": NEW_HOURS}
     with open(os.path.join(OUT_DIR, "items.json"), "w", encoding="utf-8") as f:
         json.dump({"meta": meta, "items": items}, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(OUT_DIR, "inv.json"), "w", encoding="utf-8") as f:
         json.dump({"meta": inv_meta, "items": invs}, f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(OUT_DIR, "dict.json"), "w", encoding="utf-8") as f:
         json.dump(dic, f, ensure_ascii=False, separators=(",", ":"))
-    log(f"items={len(items)} investigations={len(invs)} dict={len(dic)}")
+    log(f"items={len(items)} investigations={len(invs)} dict={len(dic)} new={n_new}/{n_new_inv}")
 
 
 def veh_all_motorcycle(p):
