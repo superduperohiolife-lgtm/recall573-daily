@@ -121,3 +121,4 @@ span.del + span.ins { margin-left: 3px; }
 .card.inv.is-new { border-top-color: var(--accent); border-right-color: var(--accent); border-bottom-color: var(--accent); box-shadow: none; }
 .newbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 2px 0; padding: 10px 12px; border-radius: 12px; background: #fdecee; color: var(--ink); font-size: 14px; }
 .newbar button { flex: none; border: 1px solid #e7b3bb; background: #fff; color: var(--accent); font: inherit; font-size: 13px; font-weight: 700; padding: 5px 10px; border-radius: 8px; }
+.card .row.dates { margin-top: 2px; font-size: 12px; }

@@ -693,6 +693,9 @@ def main():
                 "nhtsa_id": camp[:6],
                 "amendment": no,
                 "date": sd.isoformat(),
+                # NHTSA の受領日（原本は Report Received Date、改訂版は 573 記載の提出日）と、NHTSA が 573 を公開した日
+                "received": ((r.get("reportReceivedDate") or "")[:10] if no == 0 else "") or sd.isoformat(),
+                "published": (d.get("loadDate") or "")[:10] or sd.isoformat(),
                 "maker": mk,
                 "manufacturer": r.get("manufacturer"),
                 "mfr_campaign": r.get("mfrCampaignNumber"),
@@ -721,7 +724,8 @@ def main():
             prev = (d, p)
             log(f"  + {item['id']} {mk} {sd} {r.get('subject')}")
 
-    items.sort(key=lambda x: (x["date"], x["campaign"], x["amendment"]), reverse=True)
+    # 新しく公開されたものが上に来るよう、NHTSA の公開日 → 受領日の順で並べる
+    items.sort(key=lambda x: (x["published"], x["received"], x["campaign"], x["amendment"]), reverse=True)
 
     # ODI 調査（失敗してもリコール側は出力する）
     inv_meta = {"generated_at": datetime.now(JST).isoformat(timespec="minutes"), "window_from": cutoff.isoformat(),

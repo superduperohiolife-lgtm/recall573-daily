@@ -1,5 +1,5 @@
 // ネットワーク優先、オフライン時は前回分を表示
-const CACHE = "r573-v8";
+const CACHE = "r573-v9";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {

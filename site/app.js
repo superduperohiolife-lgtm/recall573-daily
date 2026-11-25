@@ -7,6 +7,7 @@
   let DICT = {};
 
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtShort = (iso) => (iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—");
   const fmtDate = (iso) => {
     const d = new Date(iso + "T00:00:00");
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -129,23 +130,26 @@
       view.innerHTML = `<p class="empty">No Part 573 reports from the selected manufacturers in the last ${days(m)} days.</p>`;
       return;
     }
+    // NHTSA の公開日ごとにまとめる（新しく公開されたものが上）
+    const pub = (it) => it.published || it.date;
     let html = newBar("recall"), cur = null;
     const byDay = {};
-    items.forEach((it) => (byDay[it.date] = (byDay[it.date] || 0) + 1));
+    items.forEach((it) => (byDay[pub(it)] = (byDay[pub(it)] || 0) + 1));
     for (const it of items) {
-      if (it.date !== cur) {
-        cur = it.date;
-        html += `<div class="day"><span>${esc(fmtDate(cur))}</span><span>${byDay[cur]}</span></div>`;
+      if (pub(it) !== cur) {
+        cur = pub(it);
+        html += `<div class="day"><span>Published ${esc(fmtDate(cur))}</span><span>${byDay[cur]}</span></div>`;
       }
       const nw = isNew(it, DATA.meta);
       html += `<a class="card${nw ? " is-new" : ""}" href="#/r/${encodeURIComponent(it.id)}">
         <div class="row">${nw ? '<span class="badge-new">NEW</span>' : ""}<span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}
         ${it.amendment ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
         <div class="subj">${esc(it.title || it.subject)}</div>
-        <div class="row">${esc(it.nhtsa_id)} · ${esc(it.total || "—")} units · ${esc(modelsShort(it))}</div>
+        <div class="row">${esc([it.nhtsa_id, `${it.total || "—"} units`, modelsShort(it)].filter(Boolean).join(" · "))}</div>
+        <div class="row dates">Received ${esc(fmtShort(it.received || it.date))} · Published ${esc(fmtShort(pub(it)))}</div>
       </a>`;
     }
-    html += `<p class="note">Listed by the submission date printed on each Part 573 report. NHTSA usually publishes a report several days after receipt, so the most recent days fill in over time.</p>`;
+    html += `<p class="note">Grouped by the date NHTSA published each Part 573 report, newest first. "Received" is the date NHTSA received the report (for an amendment, the submission date on the report). Publication usually follows receipt by several days.</p>`;
     html += footer();
     view.innerHTML = html;
     window.scrollTo(0, +sessionStorage.getItem("listY:recall") || 0);
@@ -306,7 +310,7 @@
     markRead([it]);
     document.title = `${it.nhtsa_id} ${it.title || it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.nhtsa_id}`;
-    $("#sub").textContent = fmtDate(it.date);
+    $("#sub").textContent = `Published ${fmtDate(it.published || it.date)}`;
     const am = it.amendment > 0;
     const ch = am ? it.changes : null;
     const S = (ch && ch.sections) || {};
@@ -362,7 +366,8 @@
         <h2>${tap(it.title || it.subject)}</h2>
         <div class="meta">
           <span>NHTSA ID</span><b>${esc(it.nhtsa_id)}</b>
-          <span>Submitted</span><b>${esc(fmtDate(it.date))}</b>
+          <span>Received</span><b>${esc(fmtDate(it.received || it.date))}</b>
+          <span>Published</span><b>${esc(fmtDate(it.published || it.date))}</b>
           <span>Manufacturer</span><b>${esc(it.manufacturer)}</b>
           ${it.mfr_campaign ? `<span>Mfr recall no.</span><b>${esc(it.mfr_campaign)}</b>` : ""}
         </div>
