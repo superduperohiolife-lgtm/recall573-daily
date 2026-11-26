@@ -41,7 +41,7 @@ INV_TITLES = os.path.join(ROOT, "scripts", "inv_titles.json")
 # リコールの表示タイトル（部品＋症状）。キーは NHTSA のキャンペーン番号（例: 26V748000）。改訂版も同じタイトル
 RECALL_TITLES = os.path.join(ROOT, "scripts", "recall_titles.json")
 PAGES_DATA = os.environ.get("PAGES_DATA", "https://superduperohiolife-lgtm.github.io/recall573-daily/data/")
-NEW_HOURS = 24  # 公開データに初めて載ってからこの時間は NEW 表示
+NEW_HOURS = 24  # （旧仕様の名残。画面は「最新の更新日に初掲載」を NEW とし、次の更新日まで表示する）
 UA = {"User-Agent": "recall573-daily (GitHub Actions; public NHTSA data)"}
 JST = timezone(timedelta(hours=9))
 PARSER_VERSION = "1"  # 解析ロジックを変えたら上げる（キャッシュ無効化）

@@ -56,21 +56,11 @@
     refreshNew();
   }
 
-  // ------------------------------------------------------------ NEW（初掲載から new_hours 以内・この端末で未読）
-  const READ_KEY = "r573-read";
-  let READ = new Set();
-  try { READ = new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); } catch (e) {}
-  const saveRead = () => {
-    try {
-      const live = new Set([...DATA.items, ...(INV.items || [])].map((x) => x.nk).filter(Boolean));
-      localStorage.setItem(READ_KEY, JSON.stringify([...READ].filter((k) => live.has(k))));
-    } catch (e) {}
-  };
-  const isNew = (it, meta) => {
-    if (!it || !it.added || !it.nk || READ.has(it.nk) || !meta || !meta.generated_at) return false;
-    const age = new Date(meta.generated_at) - new Date(it.added);
-    return age >= 0 && age < (meta.new_hours || 24) * 36e5;
-  };
+  // ------------------------------------------------------------ NEW（最新の更新で初めて載ったもの。既読でも消さず、次の更新日まで表示）
+  // added / generated_at は JST の ISO 文字列（例 2026-11-27T03:20+09:00）。先頭10文字が JST の日付
+  const jstDay = (iso) => (iso || "").slice(0, 10);
+  const isNew = (it, meta) => !!(it && it.added && meta && meta.generated_at && jstDay(it.added) === jstDay(meta.generated_at));
+  const newDate = (it) => fmtShort(jstDay(it.added));
   const newOf = (tab) => (tab === "recall" ? DATA.items.filter((x) => isNew(x, DATA.meta)) : (INV.items || []).filter((x) => isNew(x, INV.meta)));
   function refreshNew() {
     for (const t of ["recall", "inv"]) {
@@ -79,22 +69,11 @@
       el.hidden = !n;
     }
   }
-  function markRead(its) {
-    its.forEach((it) => it && it.nk && READ.add(it.nk));
-    saveRead();
-    refreshNew();
-  }
-  const newBadge = (it, meta) => (isNew(it, meta) ? '<span class="badge-new">NEW</span>' : "");
+  const newBadge = (it, meta) => (isNew(it, meta) ? `<span class="badge-new">NEW · ${esc(newDate(it))}</span>` : "");
   const newBar = (tab) => {
-    const n = newOf(tab).length;
-    return n ? `<div class="newbar"><span><span class="badge-new">NEW</span> ${n} new since the last update</span><button type="button" data-readall="${tab}">Mark all read</button></div>` : "";
+    const its = newOf(tab);
+    return its.length ? `<div class="newbar"><span><span class="badge-new">NEW · ${esc(newDate(its[0]))}</span> ${its.length} new in this update. Shown until the next update.</span></div>` : "";
   };
-  document.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-readall]");
-    if (!b) return;
-    markRead(newOf(b.dataset.readall));
-    route();
-  });
 
   // ------------------------------------------------------------ tabs
   const TABS = {
@@ -142,7 +121,7 @@
       }
       const nw = isNew(it, DATA.meta);
       html += `<a class="card${nw ? " is-new" : ""}" href="#/r/${encodeURIComponent(it.id)}">
-        <div class="row">${nw ? '<span class="badge-new">NEW</span>' : ""}<span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}
+        <div class="row">${newBadge(it, DATA.meta)}<span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}
         ${it.amendment ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
         <div class="subj">${esc(it.title || it.subject)}</div>
         <div class="row">${esc([it.nhtsa_id, `${it.total || "—"} units`, modelsShort(it)].filter(Boolean).join(" · "))}</div>
@@ -211,8 +190,6 @@
       view.innerHTML = `<p class="empty">This investigation is no longer in the ${days(INV.meta)}-day window.</p>`;
       return;
     }
-    const wasNew = isNew(it, INV.meta);
-    markRead([it]);
     document.title = `${it.id} ${it.title || it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.id}`;
     $("#sub").textContent = TYPE_NAME[it.type] || it.type;
@@ -230,7 +207,7 @@
       : "";
     view.innerHTML = `
       <div class="hero">
-        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${wasNew ? '<span class="badge-new">NEW</span>' : ""}${typeBadge(it)}<span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
+        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${newBadge(it, INV.meta)}${typeBadge(it)}<span class="tag">${esc(it.maker)}</span>${evBadges(it)}</div>
         <h2>${tap(it.title || it.subject)}</h2>
         <div class="meta">
           ${it.title && it.title !== it.subject ? `<span>NHTSA subject</span><b>${tap(it.subject)}</b>` : ""}
@@ -306,8 +283,6 @@
       view.innerHTML = `<p class="empty">This report is no longer in the ${days(DATA.meta)}-day window.</p>`;
       return;
     }
-    const wasNew = isNew(it, DATA.meta);
-    markRead([it]);
     document.title = `${it.nhtsa_id} ${it.title || it.subject}`;
     $("#title").textContent = `${it.maker} · ${it.nhtsa_id}`;
     $("#sub").textContent = `Published ${fmtDate(it.published || it.date)}`;
@@ -362,7 +337,7 @@
     const c = (k) => !!(S[k] || F[k]);
     view.innerHTML = `
       <div class="hero">
-        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${wasNew ? '<span class="badge-new">NEW</span>' : ""}<span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}${am ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
+        <div class="row" style="display:flex;gap:6px;flex-wrap:wrap">${newBadge(it, DATA.meta)}<span class="tag">${esc(it.maker)}</span>${it.motorcycle ? '<span class="tag moto">Motorcycle</span>' : ""}${am ? `<span class="badge-am">Amendment ${it.amendment > 90 ? "" : it.amendment}</span>` : ""}</div>
         <h2>${tap(it.title || it.subject)}</h2>
         <div class="meta">
           <span>NHTSA ID</span><b>${esc(it.nhtsa_id)}</b>
