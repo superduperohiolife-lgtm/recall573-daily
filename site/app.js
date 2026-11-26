@@ -69,7 +69,7 @@
       el.hidden = !n;
     }
   }
-  const newBadge = (it, meta) => (isNew(it, meta) ? `<span class="badge-new">NEW · ${esc(newDate(it))}</span>` : "");
+  const newBadge = (it, meta) => (isNew(it, meta) ? '<span class="badge-new">NEW</span>' : "");
   const newBar = (tab) => {
     const its = newOf(tab);
     return its.length ? `<div class="newbar"><span><span class="badge-new">NEW · ${esc(newDate(its[0]))}</span> ${its.length} new in this update. Shown until the next update.</span></div>` : "";
