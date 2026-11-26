@@ -26,5 +26,7 @@
  "26V750000": "Cracks in Camshaft May Cause Engine Stall",
  "26V756000": "ABS Module Software May Allow Shifting From Park Without Brake Pedal",
  "26V757000": "Rearview Mirror Mount Adhesive May Loosen, Mirror May Detach in Crash",
- "26V765000": "Air Bag Inflators May Rupture"
+ "26V760000": "Incorrect Powertrain Configuration May Cause Loss of Drive Power",
+ "26V765000": "Air Bag Inflators May Rupture",
+ "26V766000": "Loose Upper Control Arm Fasteners May Cause Ball Joint Separation"
 }
